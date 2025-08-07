@@ -210,21 +210,18 @@ class JinaBackend(Backend):
             (result.get("title", ""), result.get("url", ""), result.get("description", ""))
             for result in results
         ]
-        html_page = f"""
-<html><body>
-<h1>Search Results</h1>
-<ul>
-{"".join([f"<li><a href='{url}'>{title}</a> {description}</li>" for title, url, description in titles_and_urls])}
-</ul>
-</body></html>
+        text = f"""
+URL: 
+# Search Results
+
+{"\n".join([f"  * 【{idx + 1}†{title}†{get_domain(url)}】{description}" for (idx, (title, url, description)) in enumerate(titles_and_urls)])}
 """
 
-        return process_html(
-            html=html_page,
+        return PageContents(
             url="",
+            text=text,
+            urls={f"{idx + 1}": url for idx, (_, url, _) in enumerate(titles_and_urls)},
             title=query,
-            display_urls=True,
-            session=session,
         )
 
     async def fetch(self, url: str, session: ClientSession) -> PageContents:
