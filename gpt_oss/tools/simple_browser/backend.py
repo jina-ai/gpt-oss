@@ -26,6 +26,7 @@ from .page_contents import (
     PageContents,
     get_domain,
     process_html,
+    _replace_special_chars,
 )
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,7 @@ class JinaBackend(Backend):
 URL: 
 # Search Results
 
-{"\n".join([f"  * 【{idx + 1}†{title}†{get_domain(url)}】{description}" for (idx, (title, url, description)) in enumerate(titles_and_urls)])}
+{"\n".join([f"  * 【{idx + 1}†{_replace_special_chars(title)}†{_replace_special_chars(get_domain(url))}】{_replace_special_chars(description)}" for (idx, (title, url, description)) in enumerate(titles_and_urls)])}
 """
 
         return PageContents(
