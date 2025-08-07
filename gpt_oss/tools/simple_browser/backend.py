@@ -204,8 +204,6 @@ class JinaBackend(Backend):
             {"q": query, "count": topn, "respondWith": "no-content"},
         )
         results = response.get("data", [])
-        
-        # make a simple HTML page to work with browser format
         titles_and_urls = [
             (result.get("title", ""), result.get("url", ""), result.get("description", ""))
             for result in results
