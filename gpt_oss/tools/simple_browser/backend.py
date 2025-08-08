@@ -26,6 +26,7 @@ from .page_contents import (
     PageContents,
     get_domain,
     process_html,
+    _replace_special_chars,
 )
 
 logger = logging.getLogger(__name__)
@@ -163,4 +164,89 @@ class ExaBackend(Backend):
             title=results[0].get("title", ""),
             display_urls=True,
             session=session,
+        )
+
+
+
+@chz.chz(typecheck=True)
+class JinaBackend(Backend):
+    """Backend that uses the Jina Reader API."""
+
+    source: str = chz.field(doc="Description of the backend source")
+    api_key: str | None = chz.field(
+        doc="Jina API key. Uses JINA_API_KEY environment variable if not provided.",
+        default=None,
+    )
+
+    SEARCH_URL: str = "https://s.jina.ai"
+    READ_URL: str = "https://r.jina.ai"
+
+    def _get_api_key(self) -> str:
+        key = self.api_key or os.environ.get("JINA_API_KEY")
+        if not key:
+            raise BackendError("Jina API key not provided")
+        return key
+
+    async def _post(self, session: ClientSession, endpoint: str, payload: dict) -> dict:
+        headers = {"Authorization": f"Bearer {self._get_api_key()}", "Accept": "application/json"}
+        async with session.post(f"{endpoint}", json=payload, headers=headers) as resp:
+            if resp.status != 200:
+                raise BackendError(
+                    f"Jina API error {resp.status}: {await resp.text()}"
+                )
+            return await resp.json()
+
+    async def search(
+        self, query: str, topn: int, session: ClientSession
+    ) -> PageContents:
+        response = await self._post(
+            session,
+            self.SEARCH_URL,
+            {"q": query, "count": topn, "respondWith": "no-content"},
+        )
+        results = response.get("data", [])
+        titles_and_urls = [
+            (result.get("title", ""), result.get("url", ""), result.get("description", ""))
+            for result in results
+        ]
+        text = f"""
+URL: 
+# Search Results
+
+{"\n".join([f"  * 【{idx + 1}†{_replace_special_chars(title)}†{_replace_special_chars(get_domain(url))}】{_replace_special_chars(description)}" for (idx, (title, url, description)) in enumerate(titles_and_urls)])}
+"""
+
+        return PageContents(
+            url="",
+            text=text,
+            urls={f"{idx + 1}": url for idx, (_, url, _) in enumerate(titles_and_urls)},
+            title=query,
+        )
+
+    async def fetch(self, url: str, session: ClientSession) -> PageContents:
+        is_view_source = url.startswith(VIEW_SOURCE_PREFIX)
+        if is_view_source:
+            url = url[len(VIEW_SOURCE_PREFIX) :]
+        response = await self._post(
+            session,
+            self.READ_URL,
+            {
+                "url": url,
+                "respondTiming": "html" if is_view_source else "mutation-idle",
+                "retainLinks": "gpt-oss",
+                "retainImages": "none",
+            },
+        )
+        result = response.get("data", {})
+        content = result.get("content", '')
+        if not content:
+            raise BackendError(f"No contents returned for {url}")
+        top_parts = []
+        top_parts.append(f"\nURL: {url}\n")
+        
+        return PageContents(
+            url=url,
+            text="".join(top_parts) + content,
+            urls=result.get("links", {}),
+            title=result.get("title", ""),
         )
